@@ -6,27 +6,27 @@ from dataclasses import dataclass
 @dataclass
 class GuardianConfig:
     """
-    Configuration for DGB Wallet Guardian.
+    Configuration object for DGB Wallet Guardian.
 
-    In this reference version we keep it minimal and safe.
-    Real wallet teams can extend this with:
-    - risk thresholds
-    - profile modes (safe/normal/advanced)
-    - external reputation sources
+    Values here are **reference defaults**. In production, node operators
+    and wallet devs can tune these based on real-world data.
     """
 
-    # Basic thresholds for demo / reference
-    max_normal_send_ratio: float = 0.5  # fraction of balance for "normal" sends
-    large_send_warning_ratio: float = 0.9  # fraction of balance that triggers WARNING
-    block_full_balance_if_high_risk: bool = True
+    # Balance-related thresholds
+    full_wipe_ratio: float = 0.9          # ≥ 90% of balance
+    large_tx_multiplier: float = 5.0      # ≥ 5x typical_amount treated as unusual
 
+    # Behaviour rate-limiting
+    max_sends_per_window: int = 5         # max sends in window
+    send_window_seconds: int = 600        # 10 minutes
 
-def load_config(path: str | None = None) -> GuardianConfig:
-    """
-    Load configuration from file or return defaults.
+    # Fee anomaly thresholds
+    fee_multiplier_high: float = 3.0      # ≥ 3x typical_fee is suspicious
 
-    For now we ignore `path` and just return a default config object.
-    Wallet developers can plug in real config loading (YAML/JSON) here.
-    """
-    _ = path
-    return GuardianConfig()
+    # Destination risk thresholds (0.0–1.0)
+    high_risk_destination: float = 0.8
+
+    # Score → RiskLevel mapping
+    threshold_elevated: float = 1.0
+    threshold_high: float = 2.0
+    threshold_critical: float = 3.0
