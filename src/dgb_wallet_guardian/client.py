@@ -1,56 +1,72 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-from .config import GuardianConfig, load_config
+from .config import GuardianConfig
 from .guardian_engine import GuardianEngine
-from .models import WalletContext, TxProposal, EvaluationResult
+from .models import WalletContext, TransactionContext, GuardianDecision, RiskLevel
 
 
 class WalletGuardian:
     """
     High-level convenience wrapper for DGB Wallet Guardian.
 
+    This is what wallet developers will usually integrate with.
+
     Example usage:
 
         guardian = WalletGuardian()
-        result = guardian.evaluate_transaction(
+        decision = guardian.evaluate_transaction(
             wallet_ctx={"balance": 100.0},
-            tx={"to_address": "...", "amount": 10.0, "fee": 0.001},
+            tx_ctx={
+                "to_address": "...",
+                "amount": 95.0,
+            },
+            extra_signals={"sentinel_status": "ELEVATED"},
         )
     """
 
-    def __init__(self, config: GuardianConfig | None = None) -> None:
-        if config is None:
-            config = load_config()
-        self._config = config
-        self._engine = GuardianEngine(config=config)
+    def __init__(self, config: Optional[GuardianConfig] = None) -> None:
+        self.config = config or GuardianConfig()
+        self.engine = GuardianEngine(config=self.config)
+
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
 
     def evaluate_transaction(
         self,
         wallet_ctx: Dict[str, Any],
-        tx: Dict[str, Any],
-    ) -> EvaluationResult:
+        tx_ctx: Dict[str, Any],
+        extra_signals: Optional[Dict[str, Any]] = None,
+    ) -> GuardianDecision:
         """
-        Evaluate a transaction proposal.
+        Convert raw dictionaries into typed models and run the engine.
 
-        `wallet_ctx` and `tx` are plain dicts so different wallets
-        (mobile, desktop, hardware) can easily map their own structures.
+        `wallet_ctx` example:
+            {"balance": 100.0, "typical_amount": 5.0, ...}
+
+        `tx_ctx` example:
+            {"to_address": "...", "amount": 95.0, "fee": 0.1}
         """
-        ctx_obj = WalletContext(
-            balance=float(wallet_ctx.get("balance", 0.0)),
-            known_addresses=list(wallet_ctx.get("known_addresses", [])),
-            device_id=wallet_ctx.get("device_id"),
-            region=wallet_ctx.get("region"),
-            sentinel_status=str(wallet_ctx.get("sentinel_status", "NORMAL")),
-            extra=dict(wallet_ctx.get("extra", {})),
+        wallet = WalletContext(**wallet_ctx)
+        tx = TransactionContext(**tx_ctx)
+
+        return self.engine.evaluate_transaction(
+            wallet_ctx=wallet,
+            tx_ctx=tx,
+            extra_signals=extra_signals or {},
         )
 
-        tx_obj = TxProposal(
-            to_address=str(tx.get("to_address")),
-            amount=float(tx.get("amount", 0.0)),
-            fee=float(tx.get("fee", 0.0)),
-            metadata=dict(tx.get("metadata", {})),
-        )
-
-        return self._engine.evaluate(ctx_obj, tx_obj)
+    def is_safe_to_send(
+        self,
+        wallet_ctx: Dict[str, Any],
+        tx_ctx: Dict[str, Any],
+        extra_signals: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        Convenience helper: return True if transaction should be allowed
+        without blocking (NORMAL or ELEVATED).
+        """
+        decision = self.evaluate_transaction(wallet_ctx, tx_ctx, extra_signals)
+        return decision.level in {RiskLevel.NORMAL, RiskLevel.ELEVATED}
