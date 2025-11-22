@@ -1,64 +1,72 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Dict, List, Optional
+
+
+class RiskLevel(str, Enum):
+    """Risk classification for a wallet action or transaction."""
+    NORMAL = "NORMAL"
+    ELEVATED = "ELEVATED"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
 
 
 @dataclass
 class WalletContext:
     """
-    Minimal context about the wallet and environment.
+    Snapshot of wallet state at the time of evaluation.
 
-    This does NOT contain any private keys.
-    It only describes metadata that can influence risk decisions.
+    All balances are expressed in DGB for simplicity in this reference
+    implementation. Production systems may want satoshi-level precision.
     """
 
-    balance: float = 0.0
+    balance: float
+    typical_amount: Optional[float] = None
+    typical_fee: Optional[float] = None
+
+    recent_send_count: int = 0
+    recent_window_seconds: int = 0
+
     known_addresses: List[str] = field(default_factory=list)
-    device_id: Optional[str] = None
-    region: Optional[str] = None
-    sentinel_status: str = "NORMAL"  # NORMAL / ELEVATED / HIGH / CRITICAL
+
+    # room for additional metadata
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class TxProposal:
-    """
-    A transaction proposal BEFORE signing.
-
-    The wallet passes this to the guardian so it can evaluate risk first.
-    """
+class TransactionContext:
+    """Information about the outgoing transaction being evaluated."""
 
     to_address: str
     amount: float
-    fee: float
-    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    fee: Optional[float] = None
+    destination_risk_score: Optional[float] = None  # 0.0–1.0 if available
+
+    # optional fields for richer scenarios
+    memo: Optional[str] = None
+    created_at: Optional[int] = None  # unix timestamp
+    extra: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class EvaluationResult:
+class GuardianDecision:
     """
-    Result of a wallet guardian evaluation.
+    Final decision returned by Wallet Guardian.
 
-    status:
-        SAFE       – no significant issues found
-        WARNING    – user should see a strong warning / confirm twice
-        BLOCK      – transaction should be blocked unless user force-overrides
-
-    score:
-        0.0 – 1.0 risk score (higher = more dangerous)
-
-    reasons:
-        list of machine- and human-readable reason strings.
+    - level   – RiskLevel classification
+    - score   – internal numeric score (for logs/analysis)
+    - actions – recommended wallet/ADN actions
+    - reasons – human/machine-readable rule descriptions
     """
 
-    status: str
+    level: RiskLevel
     score: float
+    actions: List[str] = field(default_factory=list)
     reasons: List[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "status": self.status,
-            "score": self.score,
-            "reasons": list(self.reasons),
-        }
+    def is_blocking(self) -> bool:
+        """Convenience helper: True if signing should be blocked."""
+        return self.level in {RiskLevel.HIGH, RiskLevel.CRITICAL}
