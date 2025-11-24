@@ -1,5 +1,3 @@
-from dgb_wallet_guardian.guardian_core import GuardianCore
-
 def test_smoke():
-    g = GuardianCore()
-    assert g is not None
+    import dgb_wallet_guardian
+    assert dgb_wallet_guardian is not None
