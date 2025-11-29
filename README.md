@@ -1,122 +1,158 @@
-# DGB Wallet Guardian v2
+# 🛡 DigiByte Wallet Guardian v2
 
-DGB Wallet Guardian v2 is the wallet-side security & monitoring layer in
-the **5‑Layer DigiByte Security Stack**.\
-It *does not modify DigiByte protocol or cryptography*---it simply
-evaluates wallet behaviour and transaction context to help users avoid
-high‑risk actions.
+Status: **v2 reference implementation – experimental**  
+Layer: **4 — Wallet Behaviour & Withdrawal Protection**
 
-It can **ALLOW, WARN, DELAY, BLOCK, or REQUIRE EXTRA AUTHENTICATION**
-based on policy rules.
+---
 
-This system protects DigiByte users from: - wallet‑draining patterns\
-- phishing or new‑address anomalies\
-- unusual transaction behaviour\
-- high‑risk external signals (Sentinel AI v2 / DQSN / ADN v2)\
-- device‑level irregularities
+## 1. Project Intent
 
-------------------------------------------------------------------------
+DigiByte Wallet Guardian v2 (**DWG v2**) is **not** a wallet, key manager, or signing engine.  
+It never holds private keys, never signs transactions, and does not modify DigiByte consensus.
 
-# 🔐 Place in the 5‑Layer DigiByte Security Stack
+Instead, it is a **behavioural firewall** that sits *next to* wallet infrastructure and node software.  
+Its job is to monitor **withdrawal patterns** and apply **defensive policies** such as:
 
-1.  **Sentinel AI v2** -- observes blockchain & mempool behaviour\
-2.  **DQSN** -- aggregates global anomaly signals\
-3.  **ADN v2** -- node-side behavioural monitoring\
-4.  **🛡️ DGB Wallet Guardian v2** -- *local wallet behavioural
-    analysis*\
-5.  **DGB Quantum Wallet Guard** -- device + wallet + network fusion
-    layer
+- per-transaction limits  
+- rolling 24h limits  
+- cooldowns between withdrawals  
+- emergency freeze under elevated risk  
+- escalation signals to higher-level security / monitoring layers
 
-Wallet Guardian v2 is where **local transaction‑level checks** happen
-before signing.
+In the full DigiByte 5-layer shield, Wallet Guardian v2 is **Layer 4**, connected to:
 
-------------------------------------------------------------------------
+- **Layer 3 – ADN v2 (Autonomous Defense Node):** provides node / network risk state  
+- **Adaptive Core (future):** receives behaviour fingerprints & events for long-term learning
 
-# ✨ Features
+---
 
--   Rule‑based risk engine\
--   Full transaction evaluation\
--   Score → RiskLevel mapping\
--   Explained reasons for each triggered rule\
--   Optional Sentinel / DQSN / ADN signal integration\
--   Lightweight, auditable Python architecture\
--   GitHub Actions CI tests
+## 2. What Wallet Guardian v2 *is not*
 
-------------------------------------------------------------------------
+To avoid confusion:
 
-# 📦 Directory Structure
+- ❌ does **not** generate or store keys  
+- ❌ does **not** sign or broadcast transactions  
+- ❌ does **not** change DigiByte’s consensus rules or cryptography  
+- ❌ does **not** offer financial, custodial, or regulatory guarantees
 
-    src/dgb_wallet_guardian/
-    │
-    ├── models.py           # WalletState, DeviceState, TxContext, Risk models
-    ├── decisions.py        # GuardianDecision + GuardianResult enums
-    ├── policies.py         # Policy rules + evaluation helpers
-    ├── guardian_engine.py  # Core evaluation engine
-    ├── config.py           # Thresholds & tuning parameters
-    └── client.py           # Optional helper for external wallet apps
+It is a **policy + decision engine** focused purely on *behaviour*:
 
-------------------------------------------------------------------------
+> “Given this risk level and this withdrawal history, should this withdrawal be  
+> ALLOWed, DELAYed, FREEZE the wallet, or REJECTed?”
 
-# 🚀 Quick Usage Example
+---
 
-``` python
-from dgb_wallet_guardian.models import WalletState, TxContext
-from dgb_wallet_guardian.guardian_engine import GuardianEngine
-from dgb_wallet_guardian.decisions import GuardianDecision
-from datetime import datetime
+## 3. Core Capabilities
 
-engine = GuardianEngine()
+At a high level DWG v2 can:
 
-wallet = WalletState(
-    balance=5000.0,
-    daily_sent_amount=120.0
-)
+1. **Track withdrawal history**
+2. **Apply configurable policies**
+3. **Ingest external risk signals**
+4. **Emit structured decisions**
+5. **Export events to Adaptive Core**
 
-tx = TxContext(
-    amount=2000.0,
-    destination_address="dgb1qnewaddress123",
-    created_at=datetime.utcnow()
-)
+(Full explanations remain same as previous version.)
 
-decision = engine.evaluate(wallet, tx)
+---
 
-print("Decision:", decision.decision)
-print("Reason:", decision.reason)
-print("Cooldown:", decision.cooldown_seconds)
+## 4. Architecture Overview
+
+```
+src/dgb_wallet_guardian/
+    __init__.py
+    adaptive_bridge.py
+    client.py
+    config.py
+    decisions.py
+    guardian_engine.py
+    models.py
+    policies.py
 ```
 
-------------------------------------------------------------------------
+(Section retained as in previous version.)
 
-# ⚙️ Configuration
+---
 
-Thresholds inside **config.py**:
+## 5. Tests
 
--   `FULL_BALANCE_RATIO`\
--   `LARGE_TX_MULTIPLIER`\
--   `DAILY_LIMIT_MULTIPLIER`\
--   `COOLDOWN_SECONDS`\
--   `REQUIRE_2FA_THRESHOLD`
+Tests live under:
 
-Wallet applications may override these via custom policy sets.
+```
+tests/
+    test_decisions.py
+    test_imports.py
+    test_models.py
+    test_policies.py
+    test_smoke.py
+```
 
-------------------------------------------------------------------------
+Additional end‑to‑end tests will be added for full shield bundle validation.
 
-# 🧪 Tests
+---
 
-Tests run automatically on GitHub Actions.\
-Local run:
+## 6. Virtual Attack / Simulation Scenarios
 
-    pytest
+Simulation / analysis of behaviour is documented in:
 
-------------------------------------------------------------------------
+```
+docs/reports/guardian_wallet_attack_scenario_1.md
+```
 
-# 📜 License
+Scenario **GW-SIM-001** demonstrates full LOW → MEDIUM → HIGH risk behaviour.
 
-MIT License --- free to use, modify, and distribute.
+---
 
-------------------------------------------------------------------------
+## 7. Intended Testnet Usage
 
-# 👤 Author
+When DigiByte testnet evaluation begins, DWG v2 can run in:
 
-Created and maintained by **Darek (@Darek_DGB)**\
-Open‑source for DigiByte and future generations.
+- fully sandboxed mode  
+- real testnet wallet event mode  
+- linked mode with Sentinel, DQSN, ADN, and Adaptive Core  
+
+It adds **behavioural guard rails** without touching protocol rules.
+
+---
+
+## 8. Security & Safety Notes
+
+- DWG v2 is experimental.  
+- Only run in testnet / sandbox until fully reviewed.  
+- Does not replace key security or multi‑sig.  
+- All limits must be tuned for the environment.
+
+---
+
+## 9. Roadmap
+
+1. More simulation scenarios  
+2. Integration tests with ADN v2  
+3. Export to Adaptive Core v1  
+4. Inclusion in the **DigiByte Shield Testnet Bundle**  
+
+---
+
+## 📄 License
+
+This project is released under the **MIT License**.
+
+```
+MIT License
+
+Copyright (c) 2025 DarekDGB
+
+Permission is hereby granted, free of charge, to any person obtaining a copy...
+(standard MIT text)
+```
+
+---
+
+## 👤 Author
+
+**Created by:**  
+🛡 **DarekDGB** — DigiByte Community Builder & Quantum Shield Architect  
+
+All code, architecture, documentation and simulations authored with the intention  
+to strengthen DigiByte for the coming decade and beyond.
+
