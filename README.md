@@ -1,63 +1,68 @@
 # DGB Wallet Guardian v2
 
-DGB Wallet Guardian v2 is the wallet-side security layer in the **5‑Layer DigiByte Quantum Shield**.
-It evaluates outgoing transactions and decides whether to **ALLOW, WARN, DELAY, BLOCK, or require extra authentication**.
+DGB Wallet Guardian v2 is the wallet-side security & monitoring layer in
+the **5‑Layer DigiByte Security Stack**.\
+It *does not modify DigiByte protocol or cryptography*---it simply
+evaluates wallet behaviour and transaction context to help users avoid
+high‑risk actions.
 
-This system is designed to protect DigiByte users from:
-- wallet draining attacks  
-- phishing / new address risk  
-- unusual behaviour patterns  
-- high-risk network signals (Sentinel AI v2 / DQSN / ADN v2)  
-- device anomalies  
+It can **ALLOW, WARN, DELAY, BLOCK, or REQUIRE EXTRA AUTHENTICATION**
+based on policy rules.
 
----
+This system protects DigiByte users from: - wallet‑draining patterns\
+- phishing or new‑address anomalies\
+- unusual transaction behaviour\
+- high‑risk external signals (Sentinel AI v2 / DQSN / ADN v2)\
+- device‑level irregularities
 
-# 🔐 Place in the 5‑Layer DigiByte Quantum Shield
+------------------------------------------------------------------------
 
-1. **Sentinel AI v2** – monitors blockchain entropy, mempool, attack patterns  
-2. **DQSN** – DigiByte Quantum Shield Network (global risk propagation)  
-3. **ADN v2** – Autonomous Defense Node (node‑side defense automation)  
-4. **🛡️ DGB Wallet Guardian v2** – *this repo*  
-5. **DGB Quantum Wallet Guard** – merges wallet + device + network signals  
+# 🔐 Place in the 5‑Layer DigiByte Security Stack
 
-Wallet Guardian v2 is the layer that **stops a bad transaction before it is signed**.
+1.  **Sentinel AI v2** -- observes blockchain & mempool behaviour\
+2.  **DQSN** -- aggregates global anomaly signals\
+3.  **ADN v2** -- node-side behavioural monitoring\
+4.  **🛡️ DGB Wallet Guardian v2** -- *local wallet behavioural
+    analysis*\
+5.  **DGB Quantum Wallet Guard** -- device + wallet + network fusion
+    layer
 
----
+Wallet Guardian v2 is where **local transaction‑level checks** happen
+before signing.
+
+------------------------------------------------------------------------
 
 # ✨ Features
 
-- Rule‑based risk engine  
-- Full transaction evaluation  
-- Score → RiskLevel mapping  
-- Clearly explained reasons for each rule match  
-- Device / Sentinel / ADN integration  
-- Lightweight, auditable Python implementation  
-- GitHub Actions CI tests on every commit  
+-   Rule‑based risk engine\
+-   Full transaction evaluation\
+-   Score → RiskLevel mapping\
+-   Explained reasons for each triggered rule\
+-   Optional Sentinel / DQSN / ADN signal integration\
+-   Lightweight, auditable Python architecture\
+-   GitHub Actions CI tests
 
----
+------------------------------------------------------------------------
 
 # 📦 Directory Structure
 
-```
-src/dgb_wallet_guardian/
-│
-├── models.py           # WalletState, DeviceState, TxContext, etc.
-├── decisions.py        # GuardianDecision + GuardianResult enums
-├── policies.py         # Policy rules + evaluation helpers
-├── guardian_engine.py  # Core engine (rule evaluator)
-├── config.py           # Thresholds & tuning parameters
-└── client.py           # Optional: helper client for external apps
-```
+    src/dgb_wallet_guardian/
+    │
+    ├── models.py           # WalletState, DeviceState, TxContext, Risk models
+    ├── decisions.py        # GuardianDecision + GuardianResult enums
+    ├── policies.py         # Policy rules + evaluation helpers
+    ├── guardian_engine.py  # Core evaluation engine
+    ├── config.py           # Thresholds & tuning parameters
+    └── client.py           # Optional helper for external wallet apps
 
----
+------------------------------------------------------------------------
 
 # 🚀 Quick Usage Example
 
-```python
+``` python
 from dgb_wallet_guardian.models import WalletState, TxContext
 from dgb_wallet_guardian.guardian_engine import GuardianEngine
 from dgb_wallet_guardian.decisions import GuardianDecision
-
 from datetime import datetime
 
 engine = GuardianEngine()
@@ -80,38 +85,38 @@ print("Reason:", decision.reason)
 print("Cooldown:", decision.cooldown_seconds)
 ```
 
----
+------------------------------------------------------------------------
 
 # ⚙️ Configuration
 
-Adjust thresholds inside **config.py**:
+Thresholds inside **config.py**:
 
-- `FULL_BALANCE_RATIO`
-- `LARGE_TX_MULTIPLIER`
-- `DAILY_LIMIT_MULTIPLIER`
-- `COOLDOWN_SECONDS`
-- `REQUIRE_2FA_THRESHOLD`
+-   `FULL_BALANCE_RATIO`\
+-   `LARGE_TX_MULTIPLIER`\
+-   `DAILY_LIMIT_MULTIPLIER`\
+-   `COOLDOWN_SECONDS`\
+-   `REQUIRE_2FA_THRESHOLD`
 
-Wallet apps may override this at runtime.
+Wallet applications may override these via custom policy sets.
 
----
+------------------------------------------------------------------------
 
 # 🧪 Tests
 
-Tests run automatically on GitHub Actions after every commit.
+Tests run automatically on GitHub Actions.\
+Local run:
 
-Run locally:
+    pytest
 
-```
-pytest
-```
+------------------------------------------------------------------------
 
----
+# 📜 License
 
-# 📄 License
-MIT License — fully open source, free to use.
+MIT License --- free to use, modify, and distribute.
 
----
+------------------------------------------------------------------------
 
-# 👑 Created by DarekDGB
-Open‑source, free, for DigiByte and future generations.
+# 👤 Author
+
+Created and maintained by **Darek (@Darek_DGB)**\
+Open‑source for DigiByte and future generations.
