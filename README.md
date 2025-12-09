@@ -1,286 +1,274 @@
-# 🛡 DigiByte Wallet Guardian v2
-
-Status: **v2 reference implementation – experimental**  
-Layer: **4 — Wallet Behaviour & Withdrawal Protection**
-
----
-
-## 1. Project Intent
-
-DigiByte Wallet Guardian v2 (**DWG v2**) is **not** a wallet, key manager, or signing engine.  
-It never holds private keys, never signs transactions, and does not modify DigiByte consensus.
-
-Instead, it is a **behavioural firewall** that sits *next to* wallet infrastructure and node software.  
-Its job is to monitor **withdrawal patterns** and apply **defensive policies** such as:
-
-- per-transaction limits  
-- rolling 24h limits  
-- cooldowns between withdrawals  
-- emergency freeze under elevated risk  
-- escalation signals to higher-level security / monitoring layers
-
-In the full DigiByte 5-layer shield, Wallet Guardian v2 is **Layer 4**, connected to:
-
-- **Layer 3 – ADN v2 (Autonomous Defense Node):** provides node / network risk state  
-- **Adaptive Core (future):** receives behaviour fingerprints & events for long-term learning
+# 🛡️ Guardian Wallet  
+### *User Protection Layer • Human-Centric Defence • Secure Transaction UX*  
+**Architecture by @DarekDGB — MIT Licensed**
 
 ---
 
-## 2. What Wallet Guardian v2 *is not*
+## 🚀 Purpose
 
-To avoid confusion:
+**Guardian Wallet** is the *user-facing protection layer* of the DigiByte Quantum Shield.
 
-- ❌ does **not** generate or store keys  
-- ❌ does **not** sign or broadcast transactions  
-- ❌ does **not** change DigiByte’s consensus rules or cryptography  
-- ❌ does **not** offer financial, custodial, or regulatory guarantees
+Where:
 
-It is a **policy + decision engine** focused purely on *behaviour*:
+- **DQSN v2** reads network health  
+- **Sentinel AI v2** detects anomalies  
+- **ADN v2** produces defensive playbooks  
+- **QWG** evaluates and guards transactions  
 
-> “Given this risk level and this withdrawal history, should this withdrawal be  
-> ALLOWed, DELAYed, FREEZE the wallet, or REJECTed?”
+**Guardian Wallet is where all that intelligence meets the user.**
 
----
+Its job is to:
 
-## 3. Core Capabilities
+- explain threats clearly  
+- ask for confirmations  
+- warn when danger is detected  
+- block behaviour that is unsafe  
+- ensure humans understand risks before sending funds  
+- act as the *communication layer* between the wallet and the shield  
 
-At a high level DWG v2 can:
-
-1. **Track withdrawal history**
-   - per wallet / account  
-   - rolling time windows (e.g. last N minutes / hours / 24h)
-
-2. **Apply configurable policies**
-   - maximum per-transaction amount  
-   - maximum rolling 24h volume  
-   - minimum cooldown between withdrawals  
-   - optional emergency freeze rules under MEDIUM / HIGH risk
-
-3. **Ingest external risk signals**
-   - especially from **ADN v2** (Layer 3) and/or other monitoring components  
-   - expected risk states: `LOW`, `MEDIUM`, `HIGH`
-
-4. **Emit structured decisions**
-   - `ALLOW` – transaction proceeds  
-   - `DELAY` – soft throttle, can be retried later  
-   - `FREEZE` – wallet locked until manual review or risk downgrade  
-   - `REJECT` – hard block under high risk / abuse
-
-5. **Export events to Adaptive Core**
-   - freeze events  
-   - persistent attempts under HIGH risk  
-   - behavioural spikes, limit breaches, etc.
+Guardian Wallet protects users from mistakes, malware, deception, and network attacks  
+by translating complex shield signals into *simple, actionable guidance*.
 
 ---
 
-## 4. Architecture Overview
+# 🧱 Position in the DigiByte Quantum Shield (5-Layer Model)
 
-Code lives under:
-
-```text
-src/dgb_wallet_guardian/
-    __init__.py
-    adaptive_bridge.py
-    client.py
-    config.py
-    decisions.py
-    guardian_engine.py
-    models.py
-    policies.py
+```
+ ┌───────────────────────────────────────────────┐
+ │              Guardian Wallet                  │
+ │   User UX • Confirmations • Warnings          │
+ └───────────────────────────────────────────────┘
+                     ▲
+                     │  (structured prompts)
+ ┌───────────────────────────────────────────────┐
+ │       QWG — Quantum Wallet Guard              │
+ │ Runtime Guard • PQC Verify • Behaviour Check  │
+ └───────────────────────────────────────────────┘
+                     ▲
+                     │  (playbook outputs)
+ ┌───────────────────────────────────────────────┐
+ │                ADN v2                         │
+ │ Tactical Defence • Attack Response Routing    │
+ └───────────────────────────────────────────────┘
+                     ▲
+                     │  (threat signals)
+ ┌───────────────────────────────────────────────┐
+ │             Sentinel AI v2                    │
+ │ Telemetry & Anomaly Detection                 │
+ └───────────────────────────────────────────────┘
+                     ▲
+                     │  (network metrics)
+ ┌───────────────────────────────────────────────┐
+ │                  DQSN v2                      │
+ │ Entropy • Node Health • Chain Condition       │
+ └───────────────────────────────────────────────┘
 ```
 
-### 4.1 `guardian_engine.py` – main pipeline
-
-- orchestrates the evaluation flow  
-- consumes withdrawal events (from `client.py`)  
-- loads configuration & policies  
-- queries current risk state (e.g. from ADN v2)  
-- returns a `Decision` object and writes logs
-
-Typical flow:
-
-1. Receive `WithdrawalEvent` from client / upstream caller  
-2. Load relevant policy configuration  
-3. Evaluate policies using recent history  
-4. Combine policy result with current risk state  
-5. Produce final decision (`ALLOW` / `DELAY` / `FREEZE` / `REJECT`)  
-6. Log decision + reasons  
-7. Export any high-value events to `adaptive_bridge.py`
-
-### 4.2 `decisions.py`
-
-- defines decision types and decision objects  
-- encapsulates helper logic for generating consistent decisions, e.g.:
-
-  - reason codes (`"cooldown_breach"`, `"daily_limit"`, `"high_risk_lockdown"`, etc.)  
-  - optional metadata fields for future analytics
-
-### 4.3 `policies.py`
-
-- centralises all policy evaluation logic  
-- examples:
-
-  - `evaluate_amount_limits()`  
-  - `evaluate_daily_volume()`  
-  - `evaluate_cooldown()`
-
-- returns a structured policy result that Guardian Engine can combine with risk state.
-
-### 4.4 `models.py`
-
-- defines data models such as:
-
-  - `WithdrawalEvent`  
-  - `Decision`  
-  - internal helper structs
-
-- keeps types consistent across the engine.
-
-### 4.5 `config.py`
-
-- loads configuration and policy values (e.g. from environment, files, or defaults)  
-- examples:
-
-  - `MAX_WITHDRAWAL_PER_TX`  
-  - `MAX_WITHDRAWAL_24H`  
-  - `COOLDOWN_MINUTES`  
-  - behaviour for `MEDIUM` vs `HIGH` risk
-
-### 4.6 `client.py`
-
-- thin interface for upstream systems (wallet services, RPC wrappers, etc.)  
-- prepares `WithdrawalEvent` objects and passes them to Guardian Engine.
-
-### 4.7 `adaptive_bridge.py`
-
-- provides a single, well-defined export path to the **Adaptive Core**  
-- used for high-value events like:
-
-  - wallet freezes  
-  - persistent attempts after freeze  
-  - repeated policy violations under elevated risk
-
-This allows the future Adaptive Core to learn which behaviour patterns tend to precede attacks.
+Guardians sits at the **final human checkpoint**.  
+Its purpose: **“Make sure the user acts safely.”**
 
 ---
 
-## 5. Tests
+# 🎯 Core Mission
 
-Tests live under:
+### ✓ Turn technical defence signals into human understanding  
+Guardian converts:
 
-```text
-tests/
-    test_decisions.py
-    test_imports.py
-    test_models.py
-    test_policies.py
-    test_smoke.py
+- QWG behavioural alerts  
+- ADN threat warnings  
+- Sentinel anomaly signals  
+
+into human-friendly language users can act on.
+
+### ✓ Protect against human mistakes  
+Such as:
+
+- sending to the wrong address  
+- unusually large transfers  
+- high-fee scams  
+- risky timing (e.g., during reorg danger)  
+
+### ✓ Block dangerous actions  
+When appropriate, Guardian Wallet may:
+
+- refuse the send  
+- ask for multi-step confirmation  
+- recommend waiting  
+- warn of suspected malware behaviour  
+
+### ✓ Provide transparent, educational feedback  
+Users learn *why* an action is unsafe — enabling smarter future decisions.
+
+### ✓ Serve as the UX face of the entire Quantum Shield  
+Guardian is the interface between:
+
+- Shield intelligence  
+- Wallet user  
+- Wallet transaction flow  
+
+---
+
+# 🧠 Threat Model (User-Centric)
+
+Guardian Wallet protects against:
+
+## **1. Human Errors**
+- wrong address  
+- incorrect amounts  
+- dangerous copy/paste behaviour  
+- sending funds during known network risks  
+
+## **2. Social Engineering**
+- fake “urgent payment” scams  
+- misleading DMs or phishing messages  
+- manipulated addresses  
+
+## **3. Malware Behaviour**
+- replaced addresses via clipboard hijacking  
+- bot-like automated withdrawals  
+- suspicious rapid-fire sends  
+
+## **4. Network-Level Risks (via ADN/QWG)**
+- reorg warnings  
+- eclipse or partition detection  
+- mempool flooding  
+- dangerous block timing  
+
+## **5. Quantum Threat Evolution**
+- hybrid signature transitions  
+- PQC-driven warning logic  
+
+Guardian Wallet ensures the *user decides safely*.
+
+---
+
+# 🧩 Internal Architecture (Reference)
+
+```
+guardian_wallet/
+│
+├── prompts/
+│     ├── warning_prompts.py     # human-friendly alert messages
+│     ├── confirmation_flows.py  # multi-step verification flows
+│     └── risk_categories.py     # mapping threat → explanation
+│
+├── integration/
+│     ├── qwg_bridge.py          # receives behavioural signals
+│     ├── adn_bridge.py          # receives defence playbook outputs
+│     └── shield_context.py      # unified threat context
+│
+├── flows/
+│     ├── send_flow.py           # pre-send safety checks
+│     ├── receive_flow.py        # safe incoming logic
+│     ├── fee_validation.py      # prevents exploitative fees
+│     └── safety_modes.py        # safe mode / heightened alert mode
+│
+├── ui_logic/
+│     ├── decision_engine.py     # decides which prompt to show
+│     └── hold_and_review.py     # temporarily blocks suspicious actions
+│
+└── utils/
+      ├── types.py
+      ├── config.py
+      └── logging.py
 ```
 
-These currently focus on:
-
-- import / packaging sanity checks  
-- model and policy behaviour  
-- smoke tests for the main engine
-
-Future work can add:
-
-- end-to-end simulations mirroring the scenarios in  
-  `docs/guardian_wallet_attack_scenario_1.md`.
-
-GitHub Actions (see `.github/workflows/tests.yml`) run the test suite on each push.
+This structure is intentionally simple:  
+Guardian Wallet is **logic + prompts**, not UI visuals.
 
 ---
 
-## 6. Virtual Attack / Simulation Scenarios
+# 📡 Data Flow Overview
 
-Simulation / analysis of behaviour is documented in:
-
-```text
-docs/guardian_wallet_attack_scenario_1.md
+```
+         [Shield Intelligence]
+              ▲        ▲
+              │        │
+      [ADN Signals]  [QWG Alerts]
+              │        │
+              └───► [Guardian Context]
+                       │
+                       ▼
+         ┌──────────────────────────┐
+         │  Decision Engine         │
+         └──────────────────────────┘
+                       │
+   ┌───────────────┬───────────────┬───────────────┐
+   ▼               ▼               ▼               ▼
+[Warn User]   [Block Send]   [Require Review]   [Proceed Safely]
 ```
 
-Scenario **GW-SIM-001** demonstrates:
-
-- normal behaviour under LOW risk → `ALLOW`  
-- cooldown breach → `DELAY`  
-- daily limit breach under elevated risk → `FREEZE`  
-- persistent attempts under HIGH risk → `REJECT` + Adaptive export
-
-These scenarios run **entirely in simulation mode** and do **not** touch real keys or funds.
+Guardian Wallet **never acts silently** — the user is always involved.
 
 ---
 
-## 7. Intended Testnet Usage
+# 🛡️ Security & UX Design Principles
 
-When integrated into a DigiByte testnet or sandbox environment, Wallet Guardian v2 can be wired to:
+1. **Explain everything**  
+   A warning must *always* include a reason.
 
-- testnet-only wallet services or RPC event streams  
-- ADN v2 risk feeds (e.g. via HTTP, message bus, or direct call)  
-- optional monitoring / logging infrastructure (Prometheus, ELK, etc.)
+2. **User empowerment**  
+   Users make better decisions when they understand risks.
 
-In this mode, DWG v2 acts as a **non-consensus guardrail** around existing wallet flows:
+3. **Fail-safe behaviour**  
+   If unsure → ask, block, or delay.
 
-- monitoring behaviour  
-- enforcing guard-rails  
-- generating rich events for Sentinel / DQSN / ADN / Adaptive Core to consume
+4. **Never confuse the user**  
+   Messages must be simple, direct, human.
 
----
+5. **Never duplicate QWG logic**  
+   Guardian interprets, it does not detect.
 
-## 8. Security & Safety Notes
-
-- DWG v2 should only be used with **testnet** or **heavily-sandboxed** wallets until fully reviewed.  
-- It is not a replacement for proper key management, HSMs, or multi-sig.  
-- It introduces additional logic and complexity; operators should carefully monitor logs and decisions.  
-- All parameters (limits, cooldowns, freeze rules) **must be tuned** for the specific environment where it runs.
+6. **Non-technical clarity**  
+   “Block reorg risk detected” → becomes  
+   **“The DigiByte network is unstable right now. It is safer to wait.”**
 
 ---
 
-## 9. Roadmap
+# ⚙️ Code Status
 
-Planned next steps include:
+Guardian Wallet provides:
 
-1. Additional end-to-end simulation tests (multi-wallet, burst patterns, coordinated attacks).  
-2. Integration tests with ADN v2 risk feeds.  
-3. Exporting richer event data to Adaptive Core for replay & learning.  
-4. Packaging as part of a standalone **“DigiByte Shield Testnet Bundle”** so core developers can evaluate the full 5-layer architecture in a controlled environment.
+- complete defence flow scaffolding  
+- prompt templates  
+- shield integration points  
+- safe send-flow design  
+- deterministic rule logic  
+- stable CI tests  
 
----
-
-## 📄 License (MIT)
-
-This project is released under the **MIT License**.
-
-```text
-MIT License
-
-Copyright (c) 2025 DarekDGB
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+It is **architecture-complete**, ready for expansion by DigiByte community contributors.
 
 ---
 
-## 👤 Author
+# 🧪 Tests
 
-**Created by:**  
-🛡 **DarekDGB** — DigiByte Community Builder & Quantum Shield Architect  
+Tests validate:
 
-All code, architecture, documentation and simulations authored with the intention  
-to strengthen DigiByte for the coming decade and beyond.
+- prompt logic  
+- decision engine behaviour  
+- correct mapping of QWG & ADN signals  
+- safe-mode transitions  
+- no regressions in safety flows  
+
+---
+
+# 🤝 Contribution Policy
+
+See `CONTRIBUTING.md`.
+
+Summary:
+
+- improvements welcome  
+- clarity upgrades encouraged  
+- no removal of safety  
+- no consensus or detection logic  
+- no UI visuals here — only logic  
+
+---
+
+# 📜 License
+
+MIT License  
+© 2025 **DarekDGB**
+
+This architecture is free to use with mandatory attribution.
