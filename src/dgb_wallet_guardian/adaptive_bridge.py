@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 # Stable, v3-facing layer identifier (used by GuardianEngine + integration tests)
@@ -53,8 +53,8 @@ def build_wallet_adaptive_event(
         layer=GW_LAYER_NAME,
         action=action,
         severity=max(0.0, min(1.0, float(severity))),
+        created_at=datetime.now(timezone.utc),
         fingerprint=fingerprint,
-        created_at=datetime.now(UTC),
         metadata=meta,
     )
 
