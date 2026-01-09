@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+from dataclasses import fields
 from typing import Any, Dict, Optional
 
 from .config import GuardianConfig
 from .guardian_engine import GuardianEngine
 from .models import WalletContext, TransactionContext, GuardianDecision, RiskLevel
+
+
+def _filter_to_model_fields(model_type: type, raw: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Filter an input dict down to only the keyword fields accepted by a dataclass model.
+
+    This prevents adapter crashes when newer contract layers (v3) include
+    additional allowed context keys not used by the v2 model.
+    """
+    allowed = {f.name for f in fields(model_type)}
+    return {k: v for k, v in raw.items() if k in allowed}
 
 
 class WalletGuardian:
@@ -43,14 +55,16 @@ class WalletGuardian:
         """
         Convert raw dictionaries into typed models and run the engine.
 
-        `wallet_ctx` example:
-            {"balance": 100.0, "typical_amount": 5.0, ...}
-
-        `tx_ctx` example:
-            {"to_address": "...", "amount": 95.0, "fee": 0.1}
+        NOTE:
+        - v3 contract may provide additional allowed keys (e.g., wallet_age_days, tx_count_24h).
+        - This adapter filters inputs to the actual WalletContext / TransactionContext fields
+          to preserve backward compatibility and avoid TypeError crashes.
         """
-        wallet = WalletContext(**wallet_ctx)
-        tx = TransactionContext(**tx_ctx)
+        safe_wallet_ctx = _filter_to_model_fields(WalletContext, wallet_ctx)
+        safe_tx_ctx = _filter_to_model_fields(TransactionContext, tx_ctx)
+
+        wallet = WalletContext(**safe_wallet_ctx)
+        tx = TransactionContext(**safe_tx_ctx)
 
         return self.engine.evaluate_transaction(
             wallet_ctx=wallet,
