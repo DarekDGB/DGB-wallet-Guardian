@@ -1,240 +1,256 @@
 # Guardian Wallet v3 — Attack Scenarios & Fail‑Closed Analysis
 
-**Status:** v3 (normative-aligned)  
-**Scope:** Guardian Wallet (Layer: User Protection)  
-**Audience:** Auditors, security reviewers, integrators
+**Status:** v3 authoritative • Regression‑locked  
+**Component:** `guardian_wallet`  
+**Contract Version:** `3`
+
+This document enumerates realistic abuse/attack scenarios against the **Guardian Wallet v3
+contract gate** and the **fail‑closed defenses** implemented in code + tests.
+
+Guardian Wallet v3 is an **evaluator**. It never signs, broadcasts, or mutates state.
+Its job is to return a deterministic envelope that upstream systems can treat as:
+- `outcome="allow"` → proceed
+- `outcome="escalate"` → require extra confirmation / user action
+- `outcome="deny"` → block
 
 ---
 
-## Purpose
+## Contract safety rules (baseline)
 
-This document enumerates **explicit attack scenarios** against Guardian Wallet v3 and
-documents the **fail‑closed behavior** enforced by the v3 contract and tests.
+Guardian Wallet v3 is hardened by these contract invariants:
 
-> **Rule:** If behavior is ambiguous, malformed, or unverifiable — **execution must not proceed**.
-
-This document is **non‑normative**. The **normative source of truth** is `docs/v3/GUARDIAN_V3.md`.
-If a conflict exists, **GUARDIAN_V3.md wins**.
-
----
-
-## Threat Model Summary
-
-Guardian Wallet v3 defends against:
-- Malformed requests attempting to bypass checks
-- Policy downgrades via partial data
-- Replay and order‑based manipulation
-- UI‑level coercion (confirmation fatigue)
-- Maintainer / integrator misuse
-- Time‑based nondeterminism
-- Silent fallback behavior
-
-It does **not**:
-- Replace key custody or signing logic
-- Override EQC / WSQK authority
-- Perform network consensus or chain validation
+- **Strict top‑level schema** (`GWv3Request.from_dict` rejects unknown keys)
+- **Strict nested allowlists** for `wallet_ctx`, `tx_ctx`, `extra_signals`
+- **Oversize cap** (128KB deterministic encoded size)
+- **Bad number rejection** (NaN/±Inf fail closed)
+- **Deterministic context_hash** (canonical JSON + SHA‑256)
+- **Fail‑closed envelope**: any contract error returns `outcome="deny"` and stable `reason_codes`
 
 ---
 
-## Attack Scenarios
+## Scenario group A — Schema / parsing abuse
 
-### A1 — Malformed Request Injection
+### A1 — Unknown top‑level key injection
 
 **Vector:**  
-Attacker submits a request with missing or extra top‑level fields.
+Caller adds an unexpected top‑level field to probe parser weaknesses, smuggle authority, or bypass validation.
 
 **Example:**
 ```json
 {
   "contract_version": 3,
-  "component": "guardian",
-  "request_id": "x",
+  "component": "guardian_wallet",
+  "request_id": "r1",
+  "wallet_ctx": {},
+  "tx_ctx": {},
+  "extra_signals": {},
   "unexpected": true
 }
 ```
 
-**Defense:**
-- Strict schema parsing
-- Unknown keys → **ERROR**
-- `fail_closed = true`
+**Defense (fail‑closed):**
+- Unknown top‑level keys are rejected by `GWv3Request.from_dict`.
 
-**Expected Outcome:**  
-`decision = ERROR`  
-`reason_code = GW_ERROR_UNKNOWN_TOP_LEVEL_KEY`
+**Expected result:**
+- `outcome="deny"`
+- `reason_codes[0] = "GW_ERROR_UNKNOWN_TOP_LEVEL_KEY"`
+- `meta.fail_closed = true`
 
 ---
 
-### A2 — Contract Version Downgrade
+### A2 — Wrong contract version
 
 **Vector:**  
-Caller submits `contract_version != 3`.
+Caller submits any `contract_version` other than `3` (downgrade / confusion attack).
 
-**Defense:**
-- Hard version gate
-- No backward compatibility inside v3 path
+**Defense (fail‑closed):**
+- `contract_version` is checked before any behavioral evaluation.
 
-**Expected Outcome:**  
-`decision = ERROR`  
-`reason_code = GW_ERROR_SCHEMA_VERSION`
+**Expected result:**
+- `outcome="deny"`
+- `reason_codes[0] = "GW_ERROR_SCHEMA_VERSION"`
 
 ---
 
-### A3 — Decision Bypass Attempt
+### A3 — Wrong component name
 
 **Vector:**  
-Caller attempts to directly mark a transaction as `ALLOW`
-without satisfying Guardian rules.
+Caller sends a request for another component (or a typo) to try to reuse the gate as a permissive validator.
 
-**Defense:**
-- Guardian v3 does not accept external decisions
-- Decisions are derived internally only
+**Defense (fail‑closed):**
+- `component` must equal `guardian_wallet`.
 
-**Expected Outcome:**  
-`decision = ERROR`  
-`reason_code = GW_ERROR_INVALID_REQUEST`
+**Expected result:**
+- `outcome="deny"`
+- `reason_codes[0] = "GW_ERROR_INVALID_REQUEST"`
 
 ---
 
-### A4 — Confirmation Fatigue Abuse
+## Scenario group B — Nested key smuggling
+
+### B1 — wallet_ctx key smuggling
 
 **Vector:**  
-Repeated `WARN`‑level actions intended to desensitize the user.
+Caller attempts to add hidden parameters inside `wallet_ctx` that could affect evaluation or later layers.
 
-**Defense:**
-- Escalation rules
-- Cooldown enforcement
-- Deterministic evaluation (no time drift)
+**Defense (fail‑closed):**
+- `wallet_ctx` is strict‑allowlisted.
+- Any unknown wallet key fails closed.
 
-**Expected Outcome:**  
-Escalation → `BLOCK` or `REQUIRE_EXTRA_AUTH`
+**Expected result:**
+- `outcome="deny"`
+- `reason_codes[0] = "GW_ERROR_UNKNOWN_WALLET_KEY"`
 
 ---
 
-### A5 — Order‑Dependent Manipulation
+### B2 — tx_ctx key smuggling
 
 **Vector:**  
-Reordering inputs to influence outcome.
+Caller injects unknown fields into `tx_ctx` (e.g., internal flags, bypass bits).
 
-**Defense:**
-- Canonical sorting before hashing
-- Order‑independent aggregation
+**Defense (fail‑closed):**
+- `tx_ctx` is strict‑allowlisted.
 
-**Expected Outcome:**  
-Same input set → **identical output**
+**Expected result:**
+- `outcome="deny"`
+- `reason_codes[0] = "GW_ERROR_UNKNOWN_TX_KEY"`
 
 ---
 
-### A6 — Replay Attack
+### B3 — extra_signals key smuggling
 
 **Vector:**  
-Resubmitting a previously approved request.
+Caller injects unknown `extra_signals` fields to fake trust or introduce unvalidated structures.
 
-**Defense:**
-- Context hash includes request + policy fingerprint
-- Upstream layers (EQC/WSQK) enforce nonce / scope
+**Defense (fail‑closed):**
+- `extra_signals` is strict‑allowlisted.
 
-**Expected Outcome:**  
-Replay detected upstream or escalated
+**Expected result:**
+- `outcome="deny"`
+- `reason_codes[0] = "GW_ERROR_UNKNOWN_SIGNAL_KEY"`
 
 ---
 
-### A7 — Oversized Payload (DoS Attempt)
+## Scenario group C — Resource exhaustion / payload abuse
+
+### C1 — Oversize payload (128KB+)
 
 **Vector:**  
-Inflated metadata or evidence blob.
+Caller submits a huge payload (e.g., massive memo/session blob) to waste resources or trigger inconsistent parsing.
 
-**Defense:**
-- Strict byte caps
-- Deterministic size checks
+**Defense (fail‑closed):**
+- Deterministic encoded size check blocks requests over `MAX_PAYLOAD_BYTES`.
 
-**Expected Outcome:**  
-`decision = ERROR`  
-`reason_code = GW_ERROR_OVERSIZE`
+**Expected result:**
+- `outcome="deny"`
+- `reason_codes[0] = "GW_ERROR_OVERSIZE"`
 
 ---
 
-### A8 — Reason Code Pollution
+## Scenario group D — Numeric edge cases
+
+### D1 — NaN / Infinity injection
 
 **Vector:**  
-Injecting unknown or malformed reason codes.
+Caller sends NaN/±Inf in numeric fields to break comparisons or create non‑deterministic serialization/hashing.
 
-**Defense:**
-- Reason codes validated against enum
-- Unknown → fail‑closed
+**Defense (fail‑closed):**
+- Known numeric fields are validated to be finite.
 
-**Expected Outcome:**  
-`decision = ERROR`  
-`reason_code = GW_ERROR_INVALID_REASON_CODE`
+**Expected result:**
+- `outcome="deny"`
+- `reason_codes[0] = "GW_ERROR_BAD_NUMBER"`
 
 ---
 
-### A9 — Silent Fallback Attempt
+## Scenario group E — Decision tampering / authority injection
+
+### E1 — Caller attempts to force allow
 
 **Vector:**  
-Triggering an exception hoping for default allow.
+Caller tries to include fields like `decision="ALLOW"` or similar to bypass evaluation.
 
-**Defense:**
-- No silent fallback
-- All exceptions map to explicit ERROR response
+**Defense (fail‑closed):**
+- Such fields are not part of the contract and are rejected as unknown keys.
+- GuardianWalletV3 computes outcome from the engine risk level only.
 
-**Expected Outcome:**  
-`decision = ERROR`  
-`fail_closed = true`
+**Expected result:**
+- If injected at top-level → `GW_ERROR_UNKNOWN_TOP_LEVEL_KEY`
+- Otherwise (if nested) → corresponding unknown nested key error
 
 ---
 
-### A10 — Maintainer Abuse
+### E2 — “Partial data downgrade” (missing signals)
 
 **Vector:**  
-Maintainer attempts to weaken rules in code without tests.
+Caller omits signals hoping the system will “assume safe”.
 
-**Defense:**
-- CI requires deterministic + negative tests
-- No merge without failing‑case coverage
+**Defense (safe behavior):**
+- Missing optional dicts default to `{}` (deterministic).
+- v3 contract remains strict on unknown keys, but does not require optional context.
 
-**Expected Outcome:**  
-Change rejected at CI
-
----
-
-## Invariants (Non‑Negotiable)
-
-- **Fail‑Closed Always**
-- **No Silent Defaults**
-- **Deterministic Output**
-- **Explicit Reason Codes**
-- **No Bypass Paths**
-- **Tests > Docs**
-- **Contract Before Features**
+**Expected result:**
+- Deterministic evaluation using available context.
+- If risk remains low → `outcome="allow"` with `GW_OK_HEALTHY_ALLOW`
+- Otherwise → `outcome="escalate"` / `outcome="deny"` based on the engine
 
 ---
 
-## Relationship to Other Layers
+## Scenario group F — Adapter safety (v3 → v2 engine)
 
-- **EQC:** Decides *whether* execution may proceed
-- **Guardian Wallet:** Protects the *user*
-- **WSQK:** Enforces scoped execution
-- **ADN / Sentinel / DQSN:** Supply risk signals only
+### F1 — v3‑allowed keys not present in v2 dataclasses
 
-Guardian Wallet **cannot override** EQC or WSQK.
+**Vector:**  
+v3 allows `wallet_age_days` / `tx_count_24h`, but older v2 dataclasses may not accept them.
+This can become a crash vector if not handled.
 
----
+**Defense (hard):**
+- The v2 adapter layer filters `wallet_ctx` / `tx_ctx` to the **actual** model fields before construction.
 
-## Auditor Checklist
-
-- [ ] Unknown keys rejected
-- [ ] Invalid version rejected
-- [ ] Oversize payload rejected
-- [ ] Order independence proven
-- [ ] Deterministic hashing
-- [ ] No silent fallback
-- [ ] Reason codes enumerated
-- [ ] Tests cover all above
+**Expected result:**
+- No TypeError / crash.
+- Deterministic evaluation continues.
+- Contract envelope remains stable.
 
 ---
 
-## Status
+## Scenario group G — Determinism / replay safety
 
-This document reflects **current Guardian Wallet v3 behavior**.
-Any change to behavior **requires test changes first**.
+### G1 — Same input, different output attempt
 
+**Vector:**  
+Attacker tries to exploit time/randomness/global state to produce different verdicts for identical inputs.
+
+**Defense (hard):**
+- Contract envelope uses deterministic fields only.
+- `latency_ms` is pinned to 0 in reference implementation.
+- `context_hash` is computed from canonical JSON.
+
+**Expected result:**
+- Identical input → identical `context_hash`, `outcome`, `reason_codes`.
+
+---
+
+## What “fail‑closed” means here
+
+Guardian Wallet v3 **never** returns “ERROR” as a mode that upstream systems might accidentally treat as permissive.
+Instead, any contract failure is represented as:
+
+- `outcome="deny"`
+- `meta.fail_closed=true`
+- `reason_codes` explaining the exact failure
+
+Upstream systems must treat `deny` as **BLOCK**.
+
+---
+
+## Regression‑locked truth
+
+This document is only authoritative if it matches:
+- the implementation (`src/dgb_wallet_guardian/v3.py`, `contracts/v3_types.py`)
+- the regression tests (`tests/test_v3_contract_gate.py`, etc.)
+
+Any behavior change must:
+1) change tests first
+2) then change code
+3) then update docs
