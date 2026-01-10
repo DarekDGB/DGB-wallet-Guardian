@@ -24,9 +24,16 @@ def test_build_wallet_adaptive_event_clamps_severity_and_sets_layer_and_meta():
     assert e.action == "tx_blocked"
     assert e.severity == 1.0
     assert e.fingerprint == "fp"
-    assert e.metadata["user_id"] == "u1"
+
+    # user_id is a first-class field (not in metadata)
+    assert e.user_id == "u1"
+
+    # extra_meta stays in metadata
     assert e.metadata["k"] == "v"
-    assert e.created_at is not None  # datetime set
+
+    # created_at is an ISO8601 string (UTC)
+    assert isinstance(e.created_at, str)
+    assert e.created_at  # non-empty
 
 
 def test_build_wallet_adaptive_event_clamps_low_and_casts_float():
@@ -37,10 +44,11 @@ def test_build_wallet_adaptive_event_clamps_low_and_casts_float():
         fingerprint="fp2",
     )
     assert e.severity == 0.0
+    assert e.user_id is None
     assert e.metadata == {}
 
 
-def test_adaptive_event_to_dict_serializes_datetime():
+def test_adaptive_event_to_dict_serializes_created_at_string():
     e = build_wallet_adaptive_event(
         event_id="e3",
         action="info",
@@ -51,7 +59,9 @@ def test_adaptive_event_to_dict_serializes_datetime():
     d = e.to_dict()
     assert d["event_id"] == "e3"
     assert d["layer"] == GW_LAYER_NAME
-    assert d["created_at"] == e.created_at.isoformat()
+
+    # created_at remains exactly the string stored on the object
+    assert d["created_at"] == e.created_at
     assert d["metadata"]["a"] == 1
 
 
@@ -85,5 +95,22 @@ def test_emit_adaptive_event_calls_sink_and_returns_event():
     assert isinstance(out, AdaptiveEvent)
     assert len(seen) == 1
     assert seen[0] is out
-    assert out.metadata["user_id"] == "u5"
+
+    assert out.user_id == "u5"
     assert out.metadata["x"] == "y"
+
+
+def test_emit_adaptive_event_swallows_sink_exception():
+    def sink(_ev: AdaptiveEvent) -> None:
+        raise RuntimeError("boom")
+
+    out = emit_adaptive_event(
+        sink,
+        event_id="e6",
+        action="sent",
+        severity=0.4,
+        fingerprint="fp6",
+    )
+
+    # Sink failure must be swallowed and must not leak exceptions.
+    assert out is None
