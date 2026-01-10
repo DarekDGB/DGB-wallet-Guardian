@@ -14,8 +14,12 @@ class AdaptiveEvent:
     Standardized adaptive event emitted by Guardian Wallet.
 
     Compatible with:
-      - DigiByte Quantum Adaptive Core (v3+)
-      - Higher-layer orchestration and telemetry pipelines
+      - Sentinel AI / DQSN / ADN signal pipelines
+      - DigiByte Quantum Adaptive Core (sink-provided)
+
+    NOTE:
+      Guardian Wallet does NOT depend on Adaptive Core.
+      The caller provides a sink callable if they want events.
     """
 
     event_id: str
@@ -23,14 +27,12 @@ class AdaptiveEvent:
     action: str
     severity: float
     fingerprint: str
-    created_at: datetime
-    feedback: str = "unknown"
+    created_at: str
+    user_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        d = asdict(self)
-        d["created_at"] = self.created_at.isoformat()
-        return d
+        return asdict(self)
 
 
 def build_wallet_adaptive_event(
@@ -43,18 +45,20 @@ def build_wallet_adaptive_event(
     extra_meta: Optional[Dict[str, Any]] = None,
 ) -> AdaptiveEvent:
     meta: Dict[str, Any] = {}
-    if user_id:
-        meta["user_id"] = user_id
     if extra_meta:
         meta.update(extra_meta)
 
+    # Clamp severity deterministically to [0.0, 1.0]
+    sev = max(0.0, min(1.0, float(severity)))
+
     return AdaptiveEvent(
-        event_id=event_id,
+        event_id=str(event_id),
         layer=GW_LAYER_NAME,
-        action=action,
-        severity=max(0.0, min(1.0, float(severity))),
-        created_at=datetime.now(timezone.utc),
-        fingerprint=fingerprint,
+        action=str(action),
+        severity=sev,
+        fingerprint=str(fingerprint),
+        created_at=datetime.now(timezone.utc).isoformat(),
+        user_id=str(user_id) if user_id is not None else None,
         metadata=meta,
     )
 
@@ -70,8 +74,13 @@ def emit_adaptive_event(
     extra_meta: Optional[Dict[str, Any]] = None,
 ):
     """
-    Guardian Wallet convenience wrapper to send an event into
-    the Quantum Adaptive Core (if sink is provided).
+    Guardian Wallet convenience wrapper to send an event into Adaptive Core
+    (if a sink is provided).
+
+    Contract rule:
+      - If sink is None -> return None
+      - If sink raises -> swallow (do not affect Guardian decision) and return None
+      - Otherwise -> return the emitted event
     """
     if sink is None:
         return None
@@ -85,5 +94,10 @@ def emit_adaptive_event(
         extra_meta=extra_meta,
     )
 
-    sink(event)
+    try:
+        sink(event)
+    except Exception:
+        # Integration must never affect Guardian outcomes; swallow sink errors.
+        return None
+
     return event
